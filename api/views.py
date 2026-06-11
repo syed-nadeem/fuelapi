@@ -90,12 +90,6 @@ class RouteView(APIView):
         start_str = serializer.validated_data["start"]
         end_str = serializer.validated_data["end"]
 
-        if not start_str or not end_str:
-            return Response(
-                {"error": "Both 'start' and 'end' fields are required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
         try:
             origin = geocode(start_str)
         except Exception as e:
