@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fuel Route Planner</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; display: flex; height: 100vh; background: #0f172a; color: #e2e8f0; }
+  #sidebar { width: 360px; min-width: 300px; display: flex; flex-direction: column; background: #1e293b; overflow-y: auto; }
+  #map { flex: 1; }
+  .pad { padding: 20px; }
+  h1 { font-size: 1.2rem; font-weight: 700; color: #38bdf8; margin-bottom: 16px; }
+  label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; margin-top: 12px; }
+  input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 0.95rem; }
+  input:focus { outline: none; border-color: #38bdf8; }
+  button { margin-top: 16px; width: 100%; padding: 12px; border-radius: 8px; border: none; background: #0ea5e9; color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  button:hover { background: #38bdf8; }
+  button:disabled { background: #475569; cursor: not-allowed; }
+  #summary { margin-top: 16px; background: #0f172a; border-radius: 10px; padding: 14px; font-size: 0.85rem; line-height: 1.7; display: none; }
+  #summary b { color: #38bdf8; }
+  #stops { margin-top: 8px; }
+  .stop-card { background: #0f172a; border-left: 3px solid #22c55e; border-radius: 6px; padding: 10px 12px; margin-top: 10px; font-size: 0.82rem; line-height: 1.6; }
+  .stop-card .name { font-weight: 700; color: #86efac; font-size: 0.9rem; }
+  .stop-card .price { color: #fbbf24; }
+  #error { margin-top: 12px; color: #f87171; font-size: 0.85rem; display: none; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <div class="pad">
+    <h1>⛽ Fuel Route Planner</h1>
+    <label>Start Location</label>
+    <input id="start" type="text" placeholder="e.g. Big Cabin, OK" value="Big Cabin, OK"/>
+    <label>End Location</label>
+    <input id="end" type="text" placeholder="e.g. Tomah, WI" value="Tomah, WI"/>
+    <button id="btn" onclick="planRoute()">Plan Route</button>
+    <div id="error"></div>
+    <div id="summary"></div>
+    <div id="stops"></div>
+  </div>
+</div>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map = L.map('map').setView([39.5, -98.35], 4);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+let routeLayer = null, markerGroup = L.layerGroup().addTo(map);
+
+async function planRoute() {
+  const btn = document.getElementById('btn');
+  const errEl = document.getElementById('error');
+  const sumEl = document.getElementById('summary');
+  const stopsEl = document.getElementById('stops');
+  errEl.style.display = 'none';
+  sumEl.style.display = 'none';
+  stopsEl.innerHTML = '';
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Planning…';
+
+  if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+  markerGroup.clearLayers();
+
+  const start = document.getElementById('start').value.trim();
+  const end = document.getElementById('end').value.trim();
+
+  try {
+    const resp = await fetch('/api/route/', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({start, end})
+    });
+    const data = await resp.json();
+    if (!resp.ok) { throw new Error(data.error || 'Unknown error'); }
+
+    // Draw route
+    const latlngs = data.route.coordinates.map(([lon, lat]) => [lat, lon]);
+    routeLayer = L.polyline(latlngs, {color: '#38bdf8', weight: 4, opacity: 0.85}).addTo(map);
+    map.fitBounds(routeLayer.getBounds(), {padding: [30, 30]});
+
+    // Origin / destination markers
+    const oIcon = L.divIcon({html: '🟢', className: '', iconSize: [24,24]});
+    const dIcon = L.divIcon({html: '🏁', className: '', iconSize: [24,24]});
+    L.marker([data.origin.lat, data.origin.lon], {icon: oIcon})
+      .bindPopup(`<b>Start</b><br>${data.origin.query}`).addTo(markerGroup);
+    L.marker([data.destination.lat, data.destination.lon], {icon: dIcon})
+      .bindPopup(`<b>End</b><br>${data.destination.query}`).addTo(markerGroup);
+
+    // Fuel stop markers
+    const fIcon = L.divIcon({html: '⛽', className: '', iconSize: [24,24]});
+    data.fuel_stops.forEach((s, i) => {
+      if (s.warning) return;
+      L.marker([s.lat, s.lon], {icon: fIcon})
+        .bindPopup(`<b>Stop ${i+1}: ${s.name}</b><br>${s.city}, ${s.state}<br>$${s.price_per_gallon}/gal<br>${s.gallons_purchased} gal — $${s.cost_usd}`)
+        .addTo(markerGroup);
+    });
+
+    // Summary box form response data
+    const s = data.summary;
+    sumEl.innerHTML = `
+      <b>Distance:</b> ${s.total_distance_miles} mi &nbsp;|&nbsp; <b>Drive time:</b> ${data.route.duration_hours} hrs<br>
+      <b>Fuel stops:</b> ${s.num_fuel_stops} &nbsp;|&nbsp; <b>Gallons burned:</b> ${s.total_gallons_burned}<br>
+      <b>Total fuel cost:</b> <span style="color:#4ade80;font-size:1.1rem">$${s.total_fuel_cost_usd}</span>
+    `;
+    sumEl.style.display = 'block';
+
+    // Stop cards from response data
+    data.fuel_stops.forEach((s, i) => {
+      if (s.warning) {
+        stopsEl.innerHTML += `<div class="stop-card" style="border-color:#f87171"><span style="color:#f87171">⚠ ${s.warning}</span></div>`;
+        return;
+      }
+      stopsEl.innerHTML += `
+        <div class="stop-card">
+          <div class="name">⛽ Stop ${i+1} – ${s.name}</div>
+          <div>${s.address}, ${s.city}, ${s.state}</div>
+          <div class="price">$${s.price_per_gallon}/gal · ${s.gallons_purchased} gal · <b>$${s.cost_usd}</b></div>
+          <div style="color:#94a3b8">Mile ${s.mile_mark} · ${s.detour_miles} mi off-route</div>
+        </div>`;
+    });
+
+  } catch (e) {
+    errEl.textContent = '⚠ ' + e.message;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Plan Route';
+  }
+}
+</script>
+</body>
+</html>

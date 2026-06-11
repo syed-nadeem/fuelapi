@@ -1,0 +1,6 @@
+Django>=5.2.15 # stavle + LTS
+djangorestframework>=3.15
+pandas>=2.2
+numpy>=1.26
+requests>=2.31
+drf-yasg >=1.21.15 # for swagger docs
