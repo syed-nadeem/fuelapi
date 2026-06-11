@@ -98,3 +98,37 @@ Total trip gallons burned = `total_miles / mpg` (10 mpg).
 
 ## demo
 Visit `http://localhost:8000/` for demo.
+
+
+## Running Tests
+To run all test cases for the `api` app, use the following command:
+
+```bash
+python manage.py test api
+```
+
+### Output
+```
+Strat processing station geocoding 
+End processing station geocoding 
+Found 17 test(s).
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+Stations after bbox filter: 2155 / 7490
+...Stations after bbox filter: 2155 / 7490
+.Stations after bbox filter: 2155 / 7490
+.Stations after bbox filter: 2155 / 7490
+.....Stations after bbox filter: 2155 / 7490
+.Stations after bbox filter: 2155 / 7490
+.Stations after bbox filter: 2155 / 7490
+.Stations after bbox filter: 2155 / 7490
+.Stations after bbox filter: 2155 / 7490
+..Stations after bbox filter: 2155 / 7490
+.
+----------------------------------------------------------------------
+Ran 17 tests in 1.453s
+
+OK
+Destroying test database for alias 'default'...
+```
+
